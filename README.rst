@@ -27,8 +27,10 @@ Run the shell with:
 
 The interactive prompt is ``λ :``. Commands are split on whitespace, and
 multiple commands can be separated with ``;``. Quoting and redirection are not
-implemented. The shell also reads commands from standard input when it is not
-attached to a terminal.
+implemented. Interactive input supports tab completion for command names and
+filesystem paths; lists with more than 20 matches require a second Tab to show.
+The shell also reads commands from standard input when it is not attached to a
+terminal.
 
 Run the test suite with:
 

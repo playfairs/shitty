@@ -1,17 +1,36 @@
 import os
 import pty
 import select
+import shutil
 import sys
+import tempfile
 import time
 
-PROMPT = b"\xce\xbb : "
+PROMPT = b"\x1b[1;36m\xce\xbb\x1b[0;37m : \x1b[0m"
 
 
 class ShellSession:
     def __init__(self, executable):
+        self.home = tempfile.TemporaryDirectory()
+        self.completion_bin = os.path.join(self.home.name, "bin")
+        os.mkdir(self.completion_bin)
+        echo_executable = shutil.which("echo")
+        os.symlink(echo_executable,
+                   os.path.join(self.completion_bin, "tab-completion"))
+        for index in range(21):
+            name = f"tab-many-{index:02d}"
+            os.symlink(echo_executable,
+                       os.path.join(self.completion_bin, name))
         self.process_id, self.terminal = pty.fork()
         if self.process_id == 0:
-            os.execv(executable, [executable])
+            environment = os.environ.copy()
+            environment["HOME"] = self.home.name
+            environment["PATH"] = (
+                self.completion_bin
+                + os.pathsep
+                + environment.get("PATH", "")
+            )
+            os.execve(executable, [executable], environment)
         self.buffer = bytearray()
 
     def write(self, data):
@@ -40,9 +59,13 @@ class ShellSession:
     def redraw(self, line):
         return self.read_until(b"\r\x1b[K" + PROMPT + line)
 
+    def read_prompt(self):
+        return self.read_until(b"\n" + PROMPT)
+
     def close(self):
-        os.close(self.terminal)
         _, status = os.waitpid(self.process_id, 0)
+        os.close(self.terminal)
+        self.home.cleanup()
         if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
             raise AssertionError(f"shell exited with status {status}")
 
@@ -52,12 +75,16 @@ def test_history_and_interrupts(executable):
     session.read_until(PROMPT)
     print("started", file=sys.stderr, flush=True)
 
+    session.write(b"\t")
+    session.read_until(b"\a")
+    session.redraw(b"")
+
     session.write(b"\x1b[A")
     session.redraw(b"")
     session.write(b"\x1b[B")
     session.redraw(b"")
     session.write(b"echo first\n")
-    first_run = session.read_until(PROMPT)
+    first_run = session.read_prompt()
     assert b"first" in first_run
     print("first command", file=sys.stderr, flush=True)
 
@@ -66,7 +93,7 @@ def test_history_and_interrupts(executable):
     session.write(b"\x7f" * 5 + b"edited")
     session.redraw(b"echo edited")
     session.write(b"\n")
-    edited_run = session.read_until(PROMPT)
+    edited_run = session.read_prompt()
     assert b"edited" in edited_run
     print("edited history", file=sys.stderr, flush=True)
 
@@ -88,17 +115,45 @@ def test_history_and_interrupts(executable):
     session.redraw(b"echo scratch")
 
     session.write(b"\x03")
-    session.read_until(PROMPT)
+    session.read_prompt()
     print("interrupt empty", file=sys.stderr, flush=True)
     session.write(b"echo partial\x03")
-    session.read_until(PROMPT)
+    session.read_prompt()
     print("interrupt typed", file=sys.stderr, flush=True)
     session.write(b"echo clean\n")
-    clean_run = session.read_until(PROMPT)
+    clean_run = session.read_prompt()
     assert b"clean" in clean_run
     assert b"partial\n" not in clean_run
 
-    session.write(b"exit\n")
+    session.write(b"tab-c\t")
+    session.redraw(b"tab-completion ")
+    session.write(b"completed\n")
+    completed_command = session.read_prompt()
+    assert b"completed" in completed_command
+
+    session.write(b"cd src/co\t")
+    session.redraw(b"cd src/core/")
+    session.write(b"\n")
+    session.read_prompt()
+    session.write(b"pwd\n")
+    completed_path = session.read_prompt()
+    assert b"src/core" in completed_path
+
+    many_prefix = b"tab-many-"
+    session.write(many_prefix)
+    session.redraw(many_prefix)
+    session.write(b"\t")
+    confirmation = session.read_until(b"Press Tab again to show all")
+    assert b"tab-many-00" not in confirmation
+    session.redraw(many_prefix)
+    session.write(b"\t")
+    displayed = session.redraw(many_prefix)
+    for index in range(21):
+        assert f"tab-many-{index:02d}".encode() in displayed
+    session.write(b"\x03")
+    session.read_prompt()
+
+    session.write(b"exit 0\n")
     session.close()
     print("closed", file=sys.stderr, flush=True)
 
