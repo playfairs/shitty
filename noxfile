@@ -1,0 +1,7 @@
+tasks:
+    build:
+        run: nox setup
+        run: nox build
+    test:
+        @nox build
+        run: sh tests/test_shell.sh build/debug/shit/shit
