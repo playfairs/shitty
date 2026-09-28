@@ -7,5 +7,7 @@
 int builtin_cd(Shell *shell, const Command *command);
 int builtin_pwd(Shell *shell, const Command *command);
 int builtin_exit(Shell *shell, const Command *command);
+int builtin_export(Shell *shell, const Command *command);
+int builtin_unset(Shell *shell, const Command *command);
 
 #endif

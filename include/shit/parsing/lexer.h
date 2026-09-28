@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 
+#define LEXER_TOKEN_SEQUENCE "\x1f;"
+#define LEXER_TOKEN_PIPE "\x1f|"
+
 typedef struct
 {
     char **items;

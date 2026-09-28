@@ -615,13 +615,10 @@ launch_fzf(History *history, char **line, size_t *capacity)
         return -1;
     }
 
-    for (size_t index = 0;
-         index < history_get_count(history);
-         index++)
+        size_t entry_count = history_get_count(history);
+        for (size_t index = entry_count; index > 0; index--)
     {
-        fprintf(file,
-                "%s\n",
-                history_get_entry(history, index));
+            fprintf(file, "%s\n", history_get_entry(history, index - 1));
     }
     fclose(file);
 

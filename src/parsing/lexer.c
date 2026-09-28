@@ -41,18 +41,43 @@ int lexer_tokenize(const char *line, TokenList *tokens)
         }
 
         size_t start = position;
-        if (line[position] == ';')
+        if (line[position] == ';' || line[position] == '|')
         {
             position++;
         }
         else
         {
-            while (
-                line[position] != '\0'
-                && line[position] != ';'
-                && !isspace((unsigned char)line[position]))
+            char quote = '\0';
+            while (line[position] != '\0')
             {
+                char character = line[position];
+                if (quote == '\0'
+                    && (character == ';' || character == '|'
+                        || isspace((unsigned char)character)))
+                {
+                    break;
+                }
+                if (character == '\\' && quote != '\'')
+                {
+                    position++;
+                    if (line[position] != '\0')
+                    {
+                        position++;
+                    }
+                    continue;
+                }
+                if ((character == '\'' || character == '"')
+                    && (quote == '\0' || quote == character))
+                {
+                    quote = quote == '\0' ? character : '\0';
+                }
                 position++;
+            }
+            if (quote != '\0')
+            {
+                lexer_destroy(tokens);
+                errno = EINVAL;
+                return -1;
             }
         }
         size_t length = position - start;
@@ -70,14 +95,28 @@ int lexer_tokenize(const char *line, TokenList *tokens)
             capacity = next_capacity;
         }
 
-        char *word = malloc(length + 1);
+        size_t word_length =
+            length == 1
+                    && (line[start] == ';' || line[start] == '|')
+                ? 2
+                : length;
+        char *word = malloc(word_length + 1);
         if (word == NULL)
         {
             lexer_destroy(tokens);
             return -1;
         }
-        memcpy(word, line + start, length);
-        word[length] = '\0';
+        if (word_length == 2 && length == 1
+            && (line[start] == ';' || line[start] == '|'))
+        {
+            word[0] = '\x1f';
+            word[1] = line[start];
+        }
+        else
+        {
+            memcpy(word, line + start, length);
+        }
+        word[word_length] = '\0';
         tokens->items[tokens->length++] = word;
     }
 

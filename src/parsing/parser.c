@@ -21,7 +21,9 @@ int parser_parse_next(TokenList *tokens,
 
     size_t start = *position;
     while (start < tokens->length
-           && strcmp(tokens->items[start], ";") == 0)
+              && strcmp(tokens->items[start],
+                            LEXER_TOKEN_SEQUENCE)
+                        == 0)
     {
         start++;
     }
@@ -33,7 +35,9 @@ int parser_parse_next(TokenList *tokens,
 
     size_t end = start;
     while (end < tokens->length
-           && strcmp(tokens->items[end], ";") != 0)
+              && strcmp(tokens->items[end],
+                            LEXER_TOKEN_SEQUENCE)
+                        != 0)
     {
         end++;
     }

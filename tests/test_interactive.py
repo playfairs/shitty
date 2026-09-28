@@ -21,6 +21,15 @@ class ShellSession:
             name = f"tab-many-{index:02d}"
             os.symlink(echo_executable,
                        os.path.join(self.completion_bin, name))
+            fzf_executable = os.path.join(self.completion_bin, "fzf")
+            with open(fzf_executable, "w", encoding="utf-8") as fzf:
+                fzf.write(
+                    "#!/bin/sh\n"
+                    "cat > \"$SHIT_FZF_CAPTURE\"\n"
+                    "printf '%s\\n' 'echo edited'\n"
+                )
+            os.chmod(fzf_executable, 0o755)
+            self.fzf_capture = os.path.join(self.home.name, "fzf-input")
         self.process_id, self.terminal = pty.fork()
         if self.process_id == 0:
             environment = os.environ.copy()
@@ -30,6 +39,7 @@ class ShellSession:
                 + os.pathsep
                 + environment.get("PATH", "")
             )
+            environment["SHIT_FZF_CAPTURE"] = self.fzf_capture
             os.execve(executable, [executable], environment)
         self.buffer = bytearray()
 
@@ -106,6 +116,15 @@ def test_history_and_interrupts(executable):
     session.write(b"\x1b[B")
     session.redraw(b"")
     print("navigation", file=sys.stderr, flush=True)
+
+    session.write(b"\x06")
+    session.redraw(b"echo edited")
+    with open(session.fzf_capture, encoding="utf-8") as capture:
+        fzf_entries = capture.read().splitlines()
+    assert fzf_entries[:2] == ["echo edited", "echo first"]
+    session.write(b"\x03")
+    session.read_prompt()
+    print("fzf ordering", file=sys.stderr, flush=True)
 
     session.write(b"echo scratch")
     session.redraw(b"echo scratch")

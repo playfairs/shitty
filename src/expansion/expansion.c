@@ -93,14 +93,55 @@ static int expand_word(const char *word, char **result)
     size_t length = 0;
     expanded[0] = '\0';
 
+    char quote = '\0';
     for (size_t position = 0; word[position] != '\0';)
     {
-        if (word[position] != '$')
+        char character = word[position];
+        if (quote == '\0' && (character == '\'' || character == '"'))
         {
+            quote = character;
+            position++;
+            continue;
+        }
+        if (quote != '\0' && character == quote)
+        {
+            quote = '\0';
+            position++;
+            continue;
+        }
+        if (quote == '\'' || character != '$')
+        {
+            if (character == '\\' && quote != '\'')
+            {
+                char next_character = word[position + 1];
+                if (next_character != '\0'
+                    && (quote == '\0'
+                        || next_character == '$'
+                        || next_character == '"'
+                        || next_character == '\\'
+                        || next_character == '`'))
+                {
+                    position++;
+                    character = word[position];
+                }
+                else if (next_character != '\0')
+                {
+                    if (append_text(&expanded,
+                                    &length,
+                                    &capacity,
+                                    "\\",
+                                    1)
+                        != 0)
+                    {
+                        free(expanded);
+                        return -1;
+                    }
+                }
+            }
             if (append_text(&expanded,
                             &length,
                             &capacity,
-                            word + position,
+                            &character,
                             1)
                 != 0)
             {
