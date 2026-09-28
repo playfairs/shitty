@@ -1,6 +1,6 @@
-#include <errno.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +24,9 @@ enum
     COMPLETION_CONFIRMATION_LIMIT = 20
 };
 
-static int reserve_line(char **line, size_t *capacity, size_t required);
+static int reserve_line(char **line,
+                        size_t *capacity,
+                        size_t required);
 static int print_completions(const CompletionList *matches);
 static int request_completion_confirmation(size_t count);
 
@@ -83,16 +85,19 @@ static int completion_add(CompletionList *list,
     }
     if (list->length == list->capacity)
     {
-        size_t next_capacity = list->capacity == 0 ? 8 : list->capacity * 2;
+        size_t next_capacity =
+            list->capacity == 0 ? 8 : list->capacity * 2;
         if (next_capacity <= list->capacity
-            || next_capacity > (size_t)-1 / sizeof(*list->items))
+            || next_capacity
+                   > (size_t)-1 / sizeof(*list->items))
         {
             free(candidate);
             errno = ENOMEM;
             return -1;
         }
-        char **items = realloc(list->items,
-                               next_capacity * sizeof(*items));
+        char **items =
+            realloc(list->items,
+                    next_capacity * sizeof(*items));
         if (items == NULL)
         {
             free(candidate);
@@ -135,7 +140,8 @@ static int scan_directory(CompletionList *list,
     int result = 0;
     while ((entry = readdir(stream)) != NULL)
     {
-        if ((entry->d_name[0] == '.' && name_prefix[0] != '.')
+        if ((entry->d_name[0] == '.'
+             && name_prefix[0] != '.')
             || !has_prefix(entry->d_name, name_prefix))
         {
             continue;
@@ -143,7 +149,8 @@ static int scan_directory(CompletionList *list,
 
         size_t directory_length = strlen(directory);
         size_t name_length = strlen(entry->d_name);
-        char *full_path = malloc(directory_length + name_length + 2);
+        char *full_path =
+            malloc(directory_length + name_length + 2);
         if (full_path == NULL)
         {
             result = -1;
@@ -160,8 +167,12 @@ static int scan_directory(CompletionList *list,
                            && S_ISDIR(info.st_mode);
         if (commands)
         {
-            if (!is_directory && access(full_path, X_OK) == 0
-                && completion_add(list, candidate_prefix, entry->d_name, ' ')
+            if (!is_directory
+                && access(full_path, X_OK) == 0
+                && completion_add(list,
+                                  candidate_prefix,
+                                  entry->d_name,
+                                  ' ')
                        != 0)
             {
                 result = -1;
@@ -194,7 +205,11 @@ static int collect_command_completions(CompletionList *list,
          index++)
     {
         if (has_prefix(builtins[index], prefix)
-            && completion_add(list, "", builtins[index], ' ') != 0)
+            && completion_add(list,
+                              "",
+                              builtins[index],
+                              ' ')
+                   != 0)
         {
             return -1;
         }
@@ -220,11 +235,12 @@ static int collect_command_completions(CompletionList *list,
         {
             *next = '\0';
         }
-        result = scan_directory(list,
-                                directory[0] == '\0' ? "." : directory,
-                                "",
-                                prefix,
-                                1);
+        result = scan_directory(
+            list,
+            directory[0] == '\0' ? "." : directory,
+            "",
+            prefix,
+            1);
         if (result != 0 || next == NULL)
         {
             break;
@@ -239,10 +255,10 @@ static int collect_path_completions(CompletionList *list,
                                     const char *prefix)
 {
     const char *slash = strrchr(prefix, '/');
-    size_t directory_prefix_length = slash == NULL
-                                         ? 0
-                                         : (size_t)(slash - prefix) + 1;
-    const char *name_prefix = prefix + directory_prefix_length;
+    size_t directory_prefix_length =
+        slash == NULL ? 0 : (size_t)(slash - prefix) + 1;
+    const char *name_prefix =
+        prefix + directory_prefix_length;
     char *directory = NULL;
     if (directory_prefix_length == 0)
     {
@@ -250,7 +266,8 @@ static int collect_path_completions(CompletionList *list,
     }
     else
     {
-        size_t directory_length = directory_prefix_length - 1;
+        size_t directory_length =
+            directory_prefix_length - 1;
         if (directory_length == 0)
         {
             directory_length = 1;
@@ -266,13 +283,16 @@ static int collect_path_completions(CompletionList *list,
     {
         return -1;
     }
-    char *candidate_prefix = malloc(directory_prefix_length + 1);
+    char *candidate_prefix =
+        malloc(directory_prefix_length + 1);
     if (candidate_prefix == NULL)
     {
         free(directory);
         return -1;
     }
-    memcpy(candidate_prefix, prefix, directory_prefix_length);
+    memcpy(candidate_prefix,
+           prefix,
+           directory_prefix_length);
     candidate_prefix[directory_prefix_length] = '\0';
     int result = scan_directory(list,
                                 directory,
@@ -284,14 +304,16 @@ static int collect_path_completions(CompletionList *list,
     return result;
 }
 
-static int compare_completions(const void *left, const void *right)
+static int compare_completions(const void *left,
+                               const void *right)
 {
     const char *const *left_item = left;
     const char *const *right_item = right;
     return strcmp(*left_item, *right_item);
 }
 
-static int command_position(const char *line, size_t word_start)
+static int command_position(const char *line,
+                            size_t word_start)
 {
     while (word_start > 0)
     {
@@ -314,9 +336,10 @@ static int complete_line(char **line,
 {
     *confirm_next_tab = 0;
     size_t word_start = *cursor;
-    while (word_start > 0
-           && !isspace((unsigned char)(*line)[word_start - 1])
-           && (*line)[word_start - 1] != ';')
+    while (
+        word_start > 0
+        && !isspace((unsigned char)(*line)[word_start - 1])
+        && (*line)[word_start - 1] != ';')
     {
         word_start--;
     }
@@ -340,7 +363,8 @@ static int complete_line(char **line,
     if (command_position(*line, word_start)
         && strchr(prefix, '/') == NULL)
     {
-        result = collect_command_completions(&matches, prefix);
+        result =
+            collect_command_completions(&matches, prefix);
     }
     else
     {
@@ -368,7 +392,8 @@ static int complete_line(char **line,
     {
         size_t character = 0;
         while (character < common_length
-               && matches.items[0][character] == matches.items[index][character])
+               && matches.items[0][character]
+                      == matches.items[index][character])
         {
             character++;
         }
@@ -377,14 +402,16 @@ static int complete_line(char **line,
 
     const char *replacement = matches.items[0];
     size_t replacement_length = common_length;
-    if (matches.length > 1 && common_length <= prefix_length)
+    if (matches.length > 1
+        && common_length <= prefix_length)
     {
         if (matches.length > COMPLETION_CONFIRMATION_LIMIT
             && !confirm_large_list)
         {
             *confirm_next_tab = 1;
             int display_result =
-                request_completion_confirmation(matches.length);
+                request_completion_confirmation(
+                    matches.length);
             completion_destroy(&matches);
             return display_result;
         }
@@ -397,7 +424,8 @@ static int complete_line(char **line,
         replacement_length = strlen(replacement);
     }
     size_t suffix_length = *length - *cursor;
-    size_t new_length = word_start + replacement_length + suffix_length;
+    size_t new_length =
+        word_start + replacement_length + suffix_length;
     if (reserve_line(line, capacity, new_length + 1) != 0)
     {
         completion_destroy(&matches);
@@ -406,7 +434,9 @@ static int complete_line(char **line,
     memmove(*line + word_start + replacement_length,
             *line + *cursor,
             suffix_length + 1);
-    memcpy(*line + word_start, replacement, replacement_length);
+    memcpy(*line + word_start,
+           replacement,
+           replacement_length);
     *length = new_length;
     *cursor = word_start + replacement_length;
     completion_destroy(&matches);
@@ -422,7 +452,8 @@ static int print_completions(const CompletionList *matches)
     for (size_t index = 0; index < matches->length; index++)
     {
         size_t length = strlen(matches->items[index]);
-        if (length > 0 && matches->items[index][length - 1] == ' ')
+        if (length > 0
+            && matches->items[index][length - 1] == ' ')
         {
             length--;
         }
@@ -438,11 +469,12 @@ static int print_completions(const CompletionList *matches)
 static int request_completion_confirmation(size_t count)
 {
     char message[128];
-    int length = snprintf(message,
-                          sizeof(message),
-                          "\r\n%zu matches. Press Tab again to show all; "
-                          "any other key cancels.\r\n",
-                          count);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "\r\n%zu matches. Press Tab again to show all; "
+        "any other key cancels.\r\n",
+        count);
     if (length < 0 || (size_t)length >= sizeof(message))
     {
         errno = EOVERFLOW;
@@ -615,10 +647,12 @@ launch_fzf(History *history, char **line, size_t *capacity)
         return -1;
     }
 
-        size_t entry_count = history_get_count(history);
-        for (size_t index = entry_count; index > 0; index--)
+    size_t entry_count = history_get_count(history);
+    for (size_t index = entry_count; index > 0; index--)
     {
-            fprintf(file, "%s\n", history_get_entry(history, index - 1));
+        fprintf(file,
+                "%s\n",
+                history_get_entry(history, index - 1));
     }
     fclose(file);
 
@@ -775,7 +809,7 @@ read_interactive_line(History *history,
                               &cursor,
                               confirm_completions,
                               &confirm_next_tab)
-                != 0
+                    != 0
                 || redraw_line(prompt_buffer,
                                *line,
                                length,

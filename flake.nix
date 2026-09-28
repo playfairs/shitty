@@ -25,6 +25,23 @@
       treefmt-nix = nox.inputs.treefmt-nix;
     in
     {
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+          };
+        in
+        {
+          default = pkgs.callPackage ./nix/package.nix { };
+        }
+      );
+
+      homeModules = {
+        default = import ./nix/homeModules.nix { inherit self; };
+        shit = import ./nix/homeModules.nix { inherit self; };
+      };
+
       formatter = forAllSystems (
         system:
         let

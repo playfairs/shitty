@@ -25,7 +25,8 @@ static int process_status(int status)
     return 1;
 }
 
-static size_t assignment_prefix(char *const *argv, size_t argc)
+static size_t assignment_prefix(char *const *argv,
+                                size_t argc)
 {
     size_t count = 0;
     while (count < argc)
@@ -45,8 +46,10 @@ static size_t assignment_prefix(char *const *argv, size_t argc)
              character++)
         {
             if (!((*character >= 'A' && *character <= 'Z')
-                  || (*character >= 'a' && *character <= 'z')
-                  || (*character >= '0' && *character <= '9')
+                  || (*character >= 'a'
+                      && *character <= 'z')
+                  || (*character >= '0'
+                      && *character <= '9')
                   || *character == '_'))
             {
                 valid = 0;
@@ -62,7 +65,8 @@ static size_t assignment_prefix(char *const *argv, size_t argc)
     return count;
 }
 
-static int apply_assignments(char *const *argv, size_t count)
+static int apply_assignments(char *const *argv,
+                             size_t count)
 {
     for (size_t index = 0; index < count; index++)
     {
@@ -111,7 +115,8 @@ static int run_child_command(Shell *shell,
 
     execvp(command.argv[0], command.argv);
     int error = errno;
-    if (error == ENOENT && strchr(command.argv[0], '/') == NULL)
+    if (error == ENOENT
+        && strchr(command.argv[0], '/') == NULL)
     {
         fprintf(stderr,
                 "shit: command not found: %s\n",
@@ -147,13 +152,15 @@ static int wait_for_child(pid_t child, int *status)
     return 0;
 }
 
-static int execute_single(Shell *shell, const Command *command)
+static int execute_single(Shell *shell,
+                          const Command *command)
 {
-    size_t assignments = assignment_prefix(command->argv,
-                                           command->argc);
+    size_t assignments =
+        assignment_prefix(command->argv, command->argc);
     if (assignments == command->argc)
     {
-        if (apply_assignments(command->argv, assignments) != 0)
+        if (apply_assignments(command->argv, assignments)
+            != 0)
         {
             perror("shit: assignment");
             return 1;
@@ -194,12 +201,14 @@ static int execute_single(Shell *shell, const Command *command)
     return process_status(child_status);
 }
 
-static int execute_pipeline(Shell *shell, const Command *command)
+static int execute_pipeline(Shell *shell,
+                            const Command *command)
 {
     size_t stages = 1;
     for (size_t index = 0; index < command->argc; index++)
     {
-        if (strcmp(command->argv[index], LEXER_TOKEN_PIPE) == 0)
+        if (strcmp(command->argv[index], LEXER_TOKEN_PIPE)
+            == 0)
         {
             stages++;
         }
@@ -219,15 +228,18 @@ static int execute_pipeline(Shell *shell, const Command *command)
     while (start < command->argc)
     {
         size_t end = start;
-        while (end < command->argc
-               && strcmp(command->argv[end], LEXER_TOKEN_PIPE) != 0)
+        while (
+            end < command->argc
+            && strcmp(command->argv[end], LEXER_TOKEN_PIPE)
+                   != 0)
         {
             end++;
         }
         if (end == start)
         {
             fprintf(stderr,
-                    "shit: syntax error near unexpected token `|'\n");
+                    "shit: syntax error near unexpected "
+                    "token `|'\n");
             failed = 1;
             break;
         }
@@ -260,7 +272,8 @@ static int execute_pipeline(Shell *shell, const Command *command)
             if ((previous_read >= 0
                  && dup2(previous_read, STDIN_FILENO) < 0)
                 || (descriptors[1] >= 0
-                    && dup2(descriptors[1], STDOUT_FILENO) < 0))
+                    && dup2(descriptors[1], STDOUT_FILENO)
+                           < 0))
             {
                 perror("shit: dup2");
                 _exit(1);
@@ -286,7 +299,8 @@ static int execute_pipeline(Shell *shell, const Command *command)
             {
                 argv[index] = command->argv[start + index];
             }
-            int status = run_child_command(shell, argv, argc);
+            int status =
+                run_child_command(shell, argv, argc);
             free(argv);
             fflush(NULL);
             _exit(status);
@@ -318,7 +332,8 @@ static int execute_pipeline(Shell *shell, const Command *command)
     for (size_t index = 0; index < child_count; index++)
     {
         int child_status = 0;
-        if (wait_for_child(children[index], &child_status) != 0)
+        if (wait_for_child(children[index], &child_status)
+            != 0)
         {
             perror("shit: waitpid");
             failed = 1;
@@ -341,16 +356,17 @@ int executor_execute(Shell *shell, const Command *command)
 
     for (size_t index = 0; index < command->argc; index++)
     {
-        if (strcmp(command->argv[index], LEXER_TOKEN_PIPE) == 0)
+        if (strcmp(command->argv[index], LEXER_TOKEN_PIPE)
+            == 0)
         {
-            if (index == 0
-                || index + 1 == command->argc
+            if (index == 0 || index + 1 == command->argc
                 || strcmp(command->argv[index + 1],
                           LEXER_TOKEN_PIPE)
                        == 0)
             {
                 fprintf(stderr,
-                        "shit: syntax error near unexpected token `|'\n");
+                        "shit: syntax error near "
+                        "unexpected token `|'\n");
                 return 2;
             }
             return execute_pipeline(shell, command);

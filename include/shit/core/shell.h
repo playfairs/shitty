@@ -8,6 +8,12 @@
 
 typedef struct
 {
+    char *name;
+    char *value;
+} ShellAlias;
+
+typedef struct
+{
     bool interactive;
     bool should_exit;
     int last_status;
@@ -15,6 +21,9 @@ typedef struct
     bool first_command;
     History history;
     PromptConfig prompt_config;
+    ShellAlias *aliases;
+    size_t alias_count;
+    size_t alias_capacity;
 } Shell;
 
 int shell_run(Shell *shell);

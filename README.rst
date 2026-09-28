@@ -41,3 +41,33 @@ Run the test suite with:
 .. code-block:: sh
 
    nox task test
+
+Home Manager
+------------
+
+The flake exports a Home Manager module as ``homeModules.default`` (also
+``homeModules.shit``) and a package as ``packages.<system>.default``. Add this
+flake as an input, import its module in your Home Manager configuration, then
+enable the program:
+
+.. code-block:: nix
+
+   imports = [ inputs.shitty.homeModules.default ];
+
+    programs.shit = {
+       enable = true;
+       shellAliases = {
+          ll = "ls -l";
+          gs = "git status";
+       };
+       initContent = ''
+          export EDITOR=hx
+          echo "shit shell ready"
+       '';
+    };
+
+The module installs ``shit`` into ``home.packages`` and writes aliases followed
+by ``initContent`` to ``~/.shitrc``. Without Nix, that file accepts shell
+commands directly, for example ``alias ll='ls -l'``. It is loaded for
+interactive sessions; ``SHITRC`` can override its path. Selecting it as the
+account's login shell remains a NixOS or nix-darwin user configuration setting.

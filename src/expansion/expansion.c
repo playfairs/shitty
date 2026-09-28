@@ -97,7 +97,8 @@ static int expand_word(const char *word, char **result)
     for (size_t position = 0; word[position] != '\0';)
     {
         char character = word[position];
-        if (quote == '\0' && (character == '\'' || character == '"'))
+        if (quote == '\0'
+            && (character == '\'' || character == '"'))
         {
             quote = character;
             position++;

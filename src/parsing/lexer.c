@@ -53,7 +53,8 @@ int lexer_tokenize(const char *line, TokenList *tokens)
                 char character = line[position];
                 if (quote == '\0'
                     && (character == ';' || character == '|'
-                        || isspace((unsigned char)character)))
+                        || isspace(
+                            (unsigned char)character)))
                 {
                     break;
                 }
@@ -67,9 +68,11 @@ int lexer_tokenize(const char *line, TokenList *tokens)
                     continue;
                 }
                 if ((character == '\'' || character == '"')
-                    && (quote == '\0' || quote == character))
+                    && (quote == '\0'
+                        || quote == character))
                 {
-                    quote = quote == '\0' ? character : '\0';
+                    quote =
+                        quote == '\0' ? character : '\0';
                 }
                 position++;
             }
@@ -97,7 +100,8 @@ int lexer_tokenize(const char *line, TokenList *tokens)
 
         size_t word_length =
             length == 1
-                    && (line[start] == ';' || line[start] == '|')
+                    && (line[start] == ';'
+                        || line[start] == '|')
                 ? 2
                 : length;
         char *word = malloc(word_length + 1);

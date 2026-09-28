@@ -15,29 +15,28 @@ class ShellSession:
         self.completion_bin = os.path.join(self.home.name, "bin")
         os.mkdir(self.completion_bin)
         echo_executable = shutil.which("echo")
-        os.symlink(echo_executable,
-                   os.path.join(self.completion_bin, "tab-completion"))
+        os.symlink(echo_executable, os.path.join(self.completion_bin, "tab-completion"))
         for index in range(21):
             name = f"tab-many-{index:02d}"
-            os.symlink(echo_executable,
-                       os.path.join(self.completion_bin, name))
-            fzf_executable = os.path.join(self.completion_bin, "fzf")
-            with open(fzf_executable, "w", encoding="utf-8") as fzf:
-                fzf.write(
-                    "#!/bin/sh\n"
-                    "cat > \"$SHIT_FZF_CAPTURE\"\n"
-                    "printf '%s\\n' 'echo edited'\n"
-                )
-            os.chmod(fzf_executable, 0o755)
-            self.fzf_capture = os.path.join(self.home.name, "fzf-input")
+            os.symlink(echo_executable, os.path.join(self.completion_bin, name))
+        fzf_executable = os.path.join(self.completion_bin, "fzf")
+        with open(fzf_executable, "w", encoding="utf-8") as fzf:
+            fzf.write(
+                "#!/bin/sh\n"
+                'cat > "$SHIT_FZF_CAPTURE"\n'
+                "printf '%s\\n' 'echo edited'\n"
+            )
+        os.chmod(fzf_executable, 0o755)
+        self.fzf_capture = os.path.join(self.home.name, "fzf-input")
+        with open(os.path.join(self.home.name, ".shitrc"), "w", encoding="utf-8") as rc:
+            rc.write("alias greet='echo configured alias'\n")
+            rc.write("SHITRC_INIT=ready\n")
         self.process_id, self.terminal = pty.fork()
         if self.process_id == 0:
             environment = os.environ.copy()
             environment["HOME"] = self.home.name
             environment["PATH"] = (
-                self.completion_bin
-                + os.pathsep
-                + environment.get("PATH", "")
+                self.completion_bin + os.pathsep + environment.get("PATH", "")
             )
             environment["SHIT_FZF_CAPTURE"] = self.fzf_capture
             os.execve(executable, [executable], environment)
@@ -84,6 +83,14 @@ def test_history_and_interrupts(executable):
     session = ShellSession(executable)
     session.read_until(PROMPT)
     print("started", file=sys.stderr, flush=True)
+
+    session.write(b"greet\n")
+    configured_alias = session.read_prompt()
+    assert b"configured alias" in configured_alias
+    session.write(b"echo $SHITRC_INIT\n")
+    configured_init = session.read_prompt()
+    assert b"ready" in configured_init
+    print("startup config", file=sys.stderr, flush=True)
 
     session.write(b"\t")
     session.read_until(b"\a")
