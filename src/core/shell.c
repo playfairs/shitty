@@ -234,8 +234,7 @@ int shell_run(Shell *shell)
         errno = 0;
         InputResult input_result =
             input_read_line(shell->interactive,
-                            &shell->history,
-                            &shell->prompt_config,
+                            shell,
                             &line,
                             &capacity);
         if (input_result == INPUT_INTERRUPTED)
@@ -254,6 +253,11 @@ int shell_run(Shell *shell)
             break;
         }
         if (history_add(&shell->history, line) != 0)
+        {
+            perror("shit: history");
+        }
+        else if (shell->interactive
+                 && history_save(&shell->history) != 0)
         {
             perror("shit: history");
         }

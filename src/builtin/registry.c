@@ -313,6 +313,18 @@ static const BuiltinEntry builtin_table[] = {
 static const size_t builtin_count =
     sizeof(builtin_table) / sizeof(builtin_table[0]);
 
+bool builtin_exists(const char *name)
+{
+    for (size_t index = 0; index < builtin_count; index++)
+    {
+        if (strcmp(name, builtin_table[index].name) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool builtin_execute(Shell *shell,
                      const Command *command,
                      int *status)

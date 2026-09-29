@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "shit/builtin/builtin.h"
+#include "shit/builtin/registry.h"
 #include "shit/input/input.h"
 #include "shit/signals/signals.h"
 #include "shit/terminal/terminal.h"
@@ -580,6 +582,8 @@ static const char *highlight_style(int style)
         return "\033[0;36m";
     case 4:
         return "\033[1;35m";
+    case 5:
+        return "\033[1;31m";
     default:
         return "\033[0m";
     }
@@ -618,11 +622,162 @@ static size_t variable_end(const char *line,
     return end;
 }
 
-static int write_highlighted_line(const char *line,
+static size_t command_token_end(const char *line,
+                                size_t length,
+                                size_t start)
+{
+    char quote = '\0';
+    size_t position = start;
+    while (position < length)
+    {
+        char character = line[position];
+        if (character == '\\' && quote != '\''
+            && position + 1 < length)
+        {
+            position += 2;
+            continue;
+        }
+        if (quote == '\0'
+            && (isspace((unsigned char)character)
+                || character == ';' || character == '|'))
+        {
+            break;
+        }
+        if ((character == '\'' || character == '"')
+            && (quote == '\0' || quote == character))
+        {
+            quote = quote == '\0' ? character : '\0';
+        }
+        position++;
+    }
+    return position;
+}
+
+static char *copy_command_name(const char *line,
+                               size_t start,
+                               size_t end)
+{
+    char *name = malloc(end - start + 1);
+    if (name == NULL)
+    {
+        return NULL;
+    }
+    char quote = '\0';
+    size_t length = 0;
+    for (size_t position = start; position < end;
+         position++)
+    {
+        char character = line[position];
+        if ((character == '\'' || character == '"')
+            && (quote == '\0' || quote == character))
+        {
+            quote = quote == '\0' ? character : '\0';
+            continue;
+        }
+        if (character == '\\' && quote != '\''
+            && position + 1 < end)
+        {
+            character = line[++position];
+        }
+        name[length++] = character;
+    }
+    name[length] = '\0';
+    return name;
+}
+
+static int executable_file(const char *path)
+{
+    struct stat info;
+    return stat(path, &info) == 0 && !S_ISDIR(info.st_mode)
+           && access(path, X_OK) == 0;
+}
+
+static int command_exists(const Shell *shell,
+                          const char *line,
+                          size_t start,
+                          size_t end)
+{
+    char *name = copy_command_name(line, start, end);
+    if (name == NULL)
+    {
+        return 0;
+    }
+    if (name[0] == '\0')
+    {
+        free(name);
+        return 0;
+    }
+    if (builtin_exists(name)
+        || builtin_alias_lookup(shell, name) != NULL)
+    {
+        free(name);
+        return 1;
+    }
+    if (strchr(name, '/') != NULL)
+    {
+        int found = executable_file(name);
+        free(name);
+        return found;
+    }
+
+    const char *path = getenv("PATH");
+    if (path == NULL)
+    {
+        free(name);
+        return 0;
+    }
+    char *path_copy = strdup(path);
+    if (path_copy == NULL)
+    {
+        free(name);
+        return 0;
+    }
+    size_t name_length = strlen(name);
+    int found = 0;
+    char *directory = path_copy;
+    while (directory != NULL)
+    {
+        char *next = strchr(directory, ':');
+        if (next != NULL)
+        {
+            *next = '\0';
+        }
+        const char *resolved_directory =
+            directory[0] == '\0' ? "." : directory;
+        size_t directory_length =
+            strlen(resolved_directory);
+        char *candidate =
+            malloc(directory_length + name_length + 2);
+        if (candidate == NULL)
+        {
+            break;
+        }
+        snprintf(candidate,
+                 directory_length + name_length + 2,
+                 "%s/%s",
+                 resolved_directory,
+                 name);
+        found = executable_file(candidate);
+        free(candidate);
+        if (found || next == NULL)
+        {
+            break;
+        }
+        directory = next + 1;
+    }
+    free(path_copy);
+    free(name);
+    return found;
+}
+
+static int write_highlighted_line(const Shell *shell,
+                                  const char *line,
                                   size_t length)
 {
     char quote = '\0';
     int command_position = 1;
+    size_t command_end = 0;
+    int command_style = 5;
     int current_style = 0;
     for (size_t position = 0; position < length;)
     {
@@ -652,22 +807,36 @@ static int write_highlighted_line(const char *line,
         {
             style = 4;
             command_position = 1;
+            command_end = 0;
         }
         else if (isspace((unsigned char)character))
         {
-            if (command_position)
+            if (command_position && command_end > 0
+                && position >= command_end)
             {
                 command_position = 0;
             }
+        }
+        else if (command_position)
+        {
+            if (command_end == 0)
+            {
+                command_end = command_token_end(line,
+                                                length,
+                                                position);
+                command_style = command_exists(shell,
+                                               line,
+                                               position,
+                                               command_end)
+                                    ? 1
+                                    : 5;
+            }
+            style = command_style;
         }
         else if (character == '$')
         {
             style = 3;
             end = variable_end(line, length, position);
-        }
-        else if (command_position)
-        {
-            style = 1;
         }
 
         if (style != current_style)
@@ -702,19 +871,22 @@ static size_t utf8_columns(const char *text, size_t length)
 }
 
 static int redraw_line(const char *prompt,
-                       const History *history,
+                       const Shell *shell,
                        const char *line,
                        size_t length,
                        size_t cursor)
 {
     if (write_all("\r\033[K", 4) != 0
         || write_all(prompt, strlen(prompt)) != 0
-        || write_highlighted_line(line, length) != 0)
+        || write_highlighted_line(shell, line, length) != 0)
     {
         return -1;
     }
     const char *suggestion =
-        history_suggestion(history, line, length, cursor);
+        history_suggestion(&shell->history,
+                           line,
+                           length,
+                           cursor);
     size_t trailing_columns =
         utf8_columns(line + cursor, length - cursor);
     if (suggestion != NULL)
@@ -890,12 +1062,13 @@ static InputResult finish_input(struct termios *original,
     return result;
 }
 
-static InputResult
-read_interactive_line(History *history,
-                      const PromptConfig *prompt_config,
-                      char **line,
-                      size_t *capacity)
+static InputResult read_interactive_line(Shell *shell,
+                                         char **line,
+                                         size_t *capacity)
 {
+    History *history = &shell->history;
+    const PromptConfig *prompt_config =
+        &shell->prompt_config;
     struct termios original;
     if (terminal_begin_input(&original) != 0)
     {
@@ -988,7 +1161,7 @@ read_interactive_line(History *history,
                               &confirm_next_tab)
                     != 0
                 || redraw_line(prompt_buffer,
-                               history,
+                               shell,
                                *line,
                                length,
                                cursor)
@@ -1012,7 +1185,7 @@ read_interactive_line(History *history,
             length = strlen(*line);
             cursor = length;
             redraw_line(prompt_buffer,
-                        history,
+                        shell,
                         *line,
                         length,
                         cursor);
@@ -1089,7 +1262,7 @@ read_interactive_line(History *history,
                 cursor = length;
             }
             if (redraw_line(prompt_buffer,
-                            history,
+                            shell,
                             *line,
                             length,
                             cursor)
@@ -1115,7 +1288,7 @@ read_interactive_line(History *history,
                 length -= cursor - previous;
                 cursor = previous;
                 if (redraw_line(prompt_buffer,
-                                history,
+                                shell,
                                 *line,
                                 length,
                                 cursor)
@@ -1146,7 +1319,7 @@ read_interactive_line(History *history,
             (*line)[cursor++] = character;
             length++;
             if (redraw_line(prompt_buffer,
-                            history,
+                            shell,
                             *line,
                             length,
                             cursor)
@@ -1161,12 +1334,10 @@ read_interactive_line(History *history,
     }
 }
 
-InputResult
-input_read_line(bool interactive,
-                History *history,
-                const PromptConfig *prompt_config,
-                char **line,
-                size_t *capacity)
+InputResult input_read_line(bool interactive,
+                            Shell *shell,
+                            char **line,
+                            size_t *capacity)
 {
     if (!interactive)
     {
@@ -1174,8 +1345,5 @@ input_read_line(bool interactive,
                    ? (feof(stdin) ? INPUT_EOF : INPUT_ERROR)
                    : INPUT_LINE;
     }
-    return read_interactive_line(history,
-                                 prompt_config,
-                                 line,
-                                 capacity);
+    return read_interactive_line(shell, line, capacity);
 }

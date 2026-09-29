@@ -18,5 +18,6 @@ typedef struct
 bool builtin_execute(Shell *shell,
                      const Command *command,
                      int *status);
+bool builtin_exists(const char *name);
 
 #endif

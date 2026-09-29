@@ -4,8 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "shit/history/history.h"
-#include "shit/prompt/prompt.h"
+#include "shit/core/shell.h"
 
 typedef enum
 {
@@ -15,11 +14,9 @@ typedef enum
     INPUT_INTERRUPTED = 2
 } InputResult;
 
-InputResult
-input_read_line(bool interactive,
-                History *history,
-                const PromptConfig *prompt_config,
-                char **line,
-                size_t *capacity);
+InputResult input_read_line(bool interactive,
+                            Shell *shell,
+                            char **line,
+                            size_t *capacity);
 
 #endif

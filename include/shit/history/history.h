@@ -9,6 +9,7 @@ typedef struct
     size_t length;
     size_t capacity;
     size_t position;
+    size_t saved_entries;
     char *saved_line;
     char *file_path;
     size_t max_entries;

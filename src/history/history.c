@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,7 +135,7 @@ int history_load(History *history)
     FILE *file = fopen(path, "r");
     if (file == NULL)
     {
-        return 0;
+        return errno == ENOENT ? 0 : -1;
     }
     char *line = NULL;
     size_t capacity = 0;
@@ -150,8 +151,14 @@ int history_load(History *history)
             history_add(history, line);
         }
     }
+    int read_error = ferror(file);
     free(line);
     fclose(file);
+    if (read_error)
+    {
+        return -1;
+    }
+    history->saved_entries = history->length;
     return 0;
 }
 
@@ -162,16 +169,36 @@ int history_save(History *history)
     {
         return -1;
     }
-    FILE *file = fopen(path, "w");
+    if (history->saved_entries >= history->length)
+    {
+        return 0;
+    }
+    FILE *file = fopen(path, "a");
     if (file == NULL)
     {
         return -1;
     }
-    for (size_t index = 0; index < history->length; index++)
+    for (size_t index = history->saved_entries;
+         index < history->length;
+         index++)
     {
-        fprintf(file, "%s\n", history->entries[index]);
+        if (fprintf(file, "%s\n", history->entries[index])
+            < 0)
+        {
+            fclose(file);
+            return -1;
+        }
     }
-    fclose(file);
+    int write_error = fflush(file) != 0;
+    if (fclose(file) != 0)
+    {
+        write_error = 1;
+    }
+    if (write_error)
+    {
+        return -1;
+    }
+    history->saved_entries = history->length;
     return 0;
 }
 

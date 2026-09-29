@@ -11,7 +11,7 @@ PROMPT = b"\x1b[1;36m\xce\xbb\x1b[0;37m : \x1b[0m"
 
 
 class ShellSession:
-    def __init__(self, executable):
+    def __init__(self, executable, initial_history=None):
         self.home = tempfile.TemporaryDirectory()
         self.completion_bin = os.path.join(self.home.name, "bin")
         os.mkdir(self.completion_bin)
@@ -33,6 +33,13 @@ class ShellSession:
         with open(os.path.join(self.home.name, ".shitrc"), "w", encoding="utf-8") as rc:
             rc.write("alias greet='echo configured alias'\n")
             rc.write("SHITRC_INIT=ready\n")
+        if initial_history is not None:
+            with open(
+                os.path.join(self.home.name, ".shit_history"),
+                "w",
+                encoding="utf-8",
+            ) as history:
+                history.write("\n".join(initial_history) + "\n")
         self.process_id, self.terminal = pty.fork()
         if self.process_id == 0:
             environment = os.environ.copy()
@@ -124,9 +131,20 @@ def test_history_and_interrupts(executable):
 
     session.write(b"fastfetch\n")
     session.read_prompt()
+    session.write(b"fastfet")
+    unknown_command = session.read_until(b"\x1b[1;31mfastfet")
+    assert b"\x1b[1;31m" in unknown_command
+    suggestion = session.read_until(b"\x1b[2mch")
+    assert b"\x1b[2mch" in suggestion
+    session.write(b"\x1b[C")
+    accepted = session.redraw(b"fastfetch")
+    assert b"\x1b[1;32mfastfetch" in accepted
+    session.write(b"\x03")
+    session.read_prompt()
+
     session.write(b"fas")
     suggestion = session.read_until(b"\x1b[2mtfetch")
-    assert b"\x1b[1;32mfas" in suggestion
+    assert b"\x1b[1;31mfas" in suggestion
     session.write(b"\x1b[C")
     accepted = session.redraw(b"fastfetch")
     assert b"\x1b[1;32mfastfetch" in accepted
@@ -226,5 +244,23 @@ def test_history_and_interrupts(executable):
     print("closed", file=sys.stderr, flush=True)
 
 
+def test_history_persistence(executable):
+    session = ShellSession(executable, initial_history=["older command"])
+    session.read_until(PROMPT)
+    session.write(b"echo newly saved\n")
+    session.read_prompt()
+    with open(
+        os.path.join(session.home.name, ".shit_history"),
+        encoding="utf-8",
+    ) as history:
+        assert history.read().splitlines() == [
+            "older command",
+            "echo newly saved",
+        ]
+    session.write(b"exit 0\n")
+    session.close()
+
+
 if __name__ == "__main__":
+    test_history_persistence(sys.argv[1])
     test_history_and_interrupts(sys.argv[1])
