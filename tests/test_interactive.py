@@ -1,5 +1,6 @@
 import os
 import pty
+import re
 import select
 import shutil
 import sys
@@ -16,6 +17,7 @@ class ShellSession:
         os.mkdir(self.completion_bin)
         echo_executable = shutil.which("echo")
         os.symlink(echo_executable, os.path.join(self.completion_bin, "tab-completion"))
+        os.symlink(echo_executable, os.path.join(self.completion_bin, "fastfetch"))
         for index in range(21):
             name = f"tab-many-{index:02d}"
             os.symlink(echo_executable, os.path.join(self.completion_bin, name))
@@ -66,7 +68,36 @@ class ShellSession:
         return result
 
     def redraw(self, line):
-        return self.read_until(b"\r\x1b[K" + PROMPT + line)
+        prefix = b"\r\x1b[K" + PROMPT
+        deadline = time.monotonic() + 5
+        while True:
+            start = self.buffer.find(prefix)
+            if start >= 0:
+                end = start + len(prefix)
+                visible = 0
+                while end < len(self.buffer) and visible < len(line):
+                    escape = re.match(rb"\x1b\[[0-9;]*m", self.buffer[end:])
+                    if escape:
+                        end += escape.end()
+                    else:
+                        end += 1
+                        visible += 1
+                if visible == len(line):
+                    result = bytes(self.buffer[:end])
+                    del self.buffer[:end]
+                    return result
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"timed out waiting for redraw of {line!r}: {bytes(self.buffer)!r}"
+                )
+            readable, _, _ = select.select([self.terminal], [], [], remaining)
+            if not readable:
+                continue
+            chunk = os.read(self.terminal, 4096)
+            if not chunk:
+                raise AssertionError("shell exited while waiting for redraw")
+            self.buffer.extend(chunk)
 
     def read_prompt(self):
         return self.read_until(b"\n" + PROMPT)
@@ -90,6 +121,17 @@ def test_history_and_interrupts(executable):
     session.write(b"echo $SHITRC_INIT\n")
     configured_init = session.read_prompt()
     assert b"ready" in configured_init
+
+    session.write(b"fastfetch\n")
+    session.read_prompt()
+    session.write(b"fas")
+    suggestion = session.read_until(b"\x1b[2mtfetch")
+    assert b"\x1b[1;32mfas" in suggestion
+    session.write(b"\x1b[C")
+    accepted = session.redraw(b"fastfetch")
+    assert b"\x1b[1;32mfastfetch" in accepted
+    session.write(b"\n")
+    session.read_prompt()
     print("startup config", file=sys.stderr, flush=True)
 
     session.write(b"\t")

@@ -543,25 +543,202 @@ static size_t next_character(const char *line,
     return position;
 }
 
+static const char *
+history_suggestion(const History *history,
+                   const char *line,
+                   size_t length,
+                   size_t cursor)
+{
+    if (length == 0 || cursor != length)
+    {
+        return NULL;
+    }
+    for (size_t index = history_get_count(history);
+         index > 0;
+         index--)
+    {
+        const char *entry =
+            history_get_entry(history, index - 1);
+        if (entry != NULL && strlen(entry) > length
+            && strncmp(entry, line, length) == 0)
+        {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static const char *highlight_style(int style)
+{
+    switch (style)
+    {
+    case 1:
+        return "\033[1;32m";
+    case 2:
+        return "\033[0;33m";
+    case 3:
+        return "\033[0;36m";
+    case 4:
+        return "\033[1;35m";
+    default:
+        return "\033[0m";
+    }
+}
+
+static size_t variable_end(const char *line,
+                           size_t length,
+                           size_t position)
+{
+    size_t end = position + 1;
+    if (end < length && line[end] == '{')
+    {
+        end++;
+        while (end < length && line[end] != '}')
+        {
+            end++;
+        }
+        if (end < length)
+        {
+            end++;
+        }
+        return end;
+    }
+    if (end < length
+        && (isalpha((unsigned char)line[end])
+            || line[end] == '_'))
+    {
+        end++;
+        while (end < length
+               && (isalnum((unsigned char)line[end])
+                   || line[end] == '_'))
+        {
+            end++;
+        }
+    }
+    return end;
+}
+
+static int write_highlighted_line(const char *line,
+                                  size_t length)
+{
+    char quote = '\0';
+    int command_position = 1;
+    int current_style = 0;
+    for (size_t position = 0; position < length;)
+    {
+        char character = line[position];
+        int style = 0;
+        size_t end = position + 1;
+
+        if (quote != '\0')
+        {
+            style = 2;
+            if (quote == '"' && character == '$')
+            {
+                style = 3;
+                end = variable_end(line, length, position);
+            }
+            if (character == quote)
+            {
+                quote = '\0';
+            }
+        }
+        else if (character == '\'' || character == '"')
+        {
+            quote = character;
+            style = 2;
+        }
+        else if (character == ';' || character == '|')
+        {
+            style = 4;
+            command_position = 1;
+        }
+        else if (isspace((unsigned char)character))
+        {
+            if (command_position)
+            {
+                command_position = 0;
+            }
+        }
+        else if (character == '$')
+        {
+            style = 3;
+            end = variable_end(line, length, position);
+        }
+        else if (command_position)
+        {
+            style = 1;
+        }
+
+        if (style != current_style)
+        {
+            const char *escape = highlight_style(style);
+            if (write_all(escape, strlen(escape)) != 0)
+            {
+                return -1;
+            }
+            current_style = style;
+        }
+        if (write_all(line + position, end - position) != 0)
+        {
+            return -1;
+        }
+        position = end;
+    }
+    return current_style == 0 ? 0 : write_all("\033[0m", 4);
+}
+
+static size_t utf8_columns(const char *text, size_t length)
+{
+    size_t columns = 0;
+    for (size_t index = 0; index < length; index++)
+    {
+        if (((unsigned char)text[index] & 0xc0) != 0x80)
+        {
+            columns++;
+        }
+    }
+    return columns;
+}
+
 static int redraw_line(const char *prompt,
+                       const History *history,
                        const char *line,
                        size_t length,
                        size_t cursor)
 {
     if (write_all("\r\033[K", 4) != 0
         || write_all(prompt, strlen(prompt)) != 0
-        || write_all(line, length) != 0)
+        || write_highlighted_line(line, length) != 0)
     {
         return -1;
     }
-    if (length > cursor)
+    const char *suggestion =
+        history_suggestion(history, line, length, cursor);
+    size_t trailing_columns =
+        utf8_columns(line + cursor, length - cursor);
+    if (suggestion != NULL)
+    {
+        size_t suggestion_length = strlen(suggestion);
+        if (write_all("\033[2m", 4) != 0
+            || write_all(suggestion + length,
+                         suggestion_length - length)
+                   != 0
+            || write_all("\033[0m", 4) != 0)
+        {
+            return -1;
+        }
+        trailing_columns +=
+            utf8_columns(suggestion + length,
+                         suggestion_length - length);
+    }
+    if (trailing_columns > 0)
     {
         char movement[32];
-        size_t columns = length - cursor;
         int size = snprintf(movement,
                             sizeof(movement),
                             "\033[%zuD",
-                            columns);
+                            trailing_columns);
         if (size < 0 || (size_t)size >= sizeof(movement)
             || write_all(movement, (size_t)size) != 0)
         {
@@ -811,6 +988,7 @@ read_interactive_line(History *history,
                               &confirm_next_tab)
                     != 0
                 || redraw_line(prompt_buffer,
+                               history,
                                *line,
                                length,
                                cursor)
@@ -834,6 +1012,7 @@ read_interactive_line(History *history,
             length = strlen(*line);
             cursor = length;
             redraw_line(prompt_buffer,
+                        history,
                         *line,
                         length,
                         cursor);
@@ -854,8 +1033,37 @@ read_interactive_line(History *history,
             }
             else if (key == 'C')
             {
-                cursor =
-                    next_character(*line, length, cursor);
+                const char *suggestion =
+                    history_suggestion(history,
+                                       *line,
+                                       length,
+                                       cursor);
+                if (suggestion != NULL)
+                {
+                    size_t suggestion_length =
+                        strlen(suggestion);
+                    if (reserve_line(line,
+                                     capacity,
+                                     suggestion_length + 1)
+                        != 0)
+                    {
+                        history_reset_navigation(history);
+                        return finish_input(&original,
+                                            1,
+                                            INPUT_ERROR);
+                    }
+                    memcpy(*line,
+                           suggestion,
+                           suggestion_length + 1);
+                    length = suggestion_length;
+                    cursor = length;
+                }
+                else
+                {
+                    cursor = next_character(*line,
+                                            length,
+                                            cursor);
+                }
             }
             else if (key == 'D')
             {
@@ -881,6 +1089,7 @@ read_interactive_line(History *history,
                 cursor = length;
             }
             if (redraw_line(prompt_buffer,
+                            history,
                             *line,
                             length,
                             cursor)
@@ -906,6 +1115,7 @@ read_interactive_line(History *history,
                 length -= cursor - previous;
                 cursor = previous;
                 if (redraw_line(prompt_buffer,
+                                history,
                                 *line,
                                 length,
                                 cursor)
@@ -936,6 +1146,7 @@ read_interactive_line(History *history,
             (*line)[cursor++] = character;
             length++;
             if (redraw_line(prompt_buffer,
+                            history,
                             *line,
                             length,
                             cursor)
